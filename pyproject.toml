@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "git-habits"
+version = "0.1.0"
+description = "Measure refactoring, duplication and churn from your own git history, and compare any two periods."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Richard Atkins" }]
+keywords = ["git", "code-quality", "metrics", "refactoring", "technical-debt", "maintainability"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+git-habits = "git_habits.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/uxdw/git-habits"
+Issues = "https://github.com/uxdw/git-habits/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
