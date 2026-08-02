@@ -83,6 +83,20 @@ git-habits scan --repo . --exclude "docs/generated/**"   # add your own
 git-habits scan --repo . --no-exclude data_dumps         # or keep a category
 ```
 
+## Companion tool
+
+[**diff-habits**](https://github.com/uxdw/diff-habits) measures what this one deliberately
+cannot: it reads diff contents and counts **error-masking constructs**, the empty catch
+blocks, silenced exceptions and suppressed type checks that remove the evidence of a
+failure rather than handle it.
+
+They are two tools rather than one with a flag, and the boundary is the point. `git-habits`
+works from commit metadata and never opens a source file, so you can run it on an
+employer's repository without a conversation. Reading source is a different decision, and
+it should be a different install rather than a flag you might not notice. `diff-habits`
+depends on this package, so exclusion rules are shared and the two tools' numbers stay
+comparable.
+
 ## What this tool cannot tell you
 
 Worth reading before quoting a number from it.
