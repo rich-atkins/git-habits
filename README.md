@@ -49,6 +49,32 @@ git log --all --no-merges --numstat -M -C --find-copies-harder --date=iso-strict
 git-habits scan --from-export repo-history.tsv
 ```
 
+## What you'll see
+
+`compare` prints two `scan` blocks with a delta column. Run against a small seeded
+demo (hand-coded, then AI-assisted, split at the changeover):
+
+```text
+git-habits compare --repo ./demo --author "dev@example.com" --split 2026-04-13
+
+  before                                  after
+    commits        4  (1.0/active day)      commits        4  (1.0/active day)
+    changed lines  23                       changed lines  41
+    lines/commit   p50 6.0                  lines/commit   p50 11.0
+    moved (reuse)  0.0%                     moved (reuse)  12.2%
+    rework <=14d   0.0%                     rework <=14d   24.39%
+    AI co-authored 0 (0.0%)                 AI co-authored 4 (100.0%)
+
+  deltas (after vs before)
+    lines/commit   5.8 -> 10.2   +76%
+    moved %        0.0 -> 12.2
+    rework %       0.0 -> 24.39
+```
+
+Full `scan` and `compare` output, with the demo repo described, is in
+[`docs/example-output.md`](docs/example-output.md). Read the *movement*, not the
+absolute values — and mind the caveats below.
+
 ## What it measures
 
 Everything comes from commit metadata and numstat counts, so it works identically on a
