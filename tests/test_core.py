@@ -154,3 +154,15 @@ def test_empty_export_raises_rather_than_reporting_nothing():
     """`git log --format="COMMIT"` (no % placeholder) emits nothing and exits 0."""
     with pytest.raises(ParseError, match="no commits"):
         from_export("/dev/null")
+
+
+# --- git %aI dates on Python 3.10 -------------------------------------------------
+
+def test_utc_z_suffix_dates_parse():
+    """git's %aI emits `2026-01-01T09:00:00Z` for UTC commits; fromisoformat
+    rejects the Z until Python 3.11. Found by CI's 3.10 job the first time the
+    sabotage suite ran against a real repository — v0.1 never parsed live-git
+    dates in tests, so the floor claimed 3.10 without ever proving it."""
+    row = "COMMIT\ta1\tRich\trich@example.com\t2026-01-01T09:00:00Z\t2026-01-01T09:00:00Z\twork\t"
+    commits = list(parse_stream([row, "5\t1\ta.ts"]))
+    assert commits[0].authored_at.isoformat() == "2026-01-01T09:00:00+00:00"
