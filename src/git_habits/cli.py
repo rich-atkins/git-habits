@@ -14,7 +14,7 @@ import sys
 from datetime import datetime, timezone
 
 from .exclude import DEFAULT_PATTERNS, Excluder, ExclusionReport
-from .metrics import Metrics, compute
+from .metrics import MIN_EVIDENCE_COMMITS, MIN_EVIDENCE_LINES, Metrics, compute
 from .model import Commit
 from .parse import LOG_ARGS, ParseError, from_export, from_repo
 
@@ -63,23 +63,44 @@ def _fmt_exclusion(r: ExclusionReport) -> str:
     return "\n".join(lines)
 
 
-def _fmt_metrics(label: str, m: Metrics) -> str:
+def _insufficiency(m: Metrics, args) -> dict[str, str]:
+    return m.insufficiency(min_commits=args.min_evidence_commits,
+                           min_lines=args.min_evidence_lines)
+
+
+def _fmt_metrics(label: str, m: Metrics, insuff: dict[str, str]) -> str:
     d = m.as_dict()
+    if m.commits == 0:
+        # Nothing was measured; a block of zeros would read as measurements.
+        return f"  {label}\n    no commits in this selection: nothing to measure"
+
+    def _if(key: str, value: str) -> str:
+        return f"insufficient ({insuff[key]})" if key in insuff else value
+
+    if "ai_coauthored_pct" in insuff:
+        ai = f"insufficient ({insuff['ai_coauthored_pct']})"
+    elif d["trailers_captured"]:
+        ai = f"{d['ai_coauthored_commits']} commits ({d['ai_coauthored_pct']}%)"
+    else:
+        ai = "not captured by this source (unknown, not zero)"
+
     return "\n".join([
         f"  {label}",
         f"    window            {d['first_commit']} to {d['last_commit']}  "
         f"({d['span_days']}d span, {d['active_days']} active)",
-        f"    commits           {d['commits']:,}   ({d['commits_per_active_day']}/active day)",
+        f"    commits           {d['commits']:,}   "
+        + _if("commits_per_active_day", f"({d['commits_per_active_day']}/active day)"),
         f"    changed lines     {d['churn']:,}",
-        f"    lines/commit      mean {d['lines_per_commit']}  p50 {d['lines_per_commit_p50']}  p90 {d['lines_per_commit_p90']}",
-        f"    moved (reuse)     {d['moved_pct']}%  ({d['moved_per_kloc']} per 1k changed lines)",
-        f"    legacy touch      {d['legacy_pct']}%  ({d['legacy_per_kloc']} per 1k)",
-        f"    rework <=14d      {d['rework_pct']}%  ({d['rework_per_kloc']} per 1k)",
-        f"    AI co-authored    " + (
-            f"{d['ai_coauthored_commits']} commits ({d['ai_coauthored_pct']}%)"
-            if d["trailers_captured"]
-            else "not captured by this source (unknown, not zero)"
-        ),
+        f"    lines/commit      " + _if(
+            "lines_per_commit",
+            f"mean {d['lines_per_commit']}  p50 {d['lines_per_commit_p50']}  p90 {d['lines_per_commit_p90']}"),
+        f"    moved (reuse)     " + _if(
+            "moved_pct", f"{d['moved_pct']}%  ({d['moved_per_kloc']} per 1k changed lines)"),
+        f"    legacy touch      " + _if(
+            "legacy_pct", f"{d['legacy_pct']}%  ({d['legacy_per_kloc']} per 1k)"),
+        f"    rework <=14d      " + _if(
+            "rework_pct", f"{d['rework_pct']}%  ({d['rework_per_kloc']} per 1k)"),
+        f"    AI co-authored    {ai}",
     ])
 
 
@@ -98,20 +119,26 @@ def cmd_scan(args) -> int:
     sel = _select(kept_all, args.author, args.since, args.until)
     _, rep = _excluder(args).apply(_select(all_commits, args.author, args.since, args.until))
     m = compute(sel, history=kept_all)
+    insuff = _insufficiency(m, args)
 
     if args.json:
-        print(json.dumps({"metrics": m.as_dict(), "excluded_pct": round(rep.excluded_pct, 2)}, indent=2))
-        return 0
+        print(json.dumps({
+            "metrics": m.as_dict(),
+            "insufficient": insuff,
+            "excluded_pct": round(rep.excluded_pct, 2),
+        }, indent=2))
+        return 1 if m.commits == 0 else 0
     print(f"\ngit-habits scan  (log args: {' '.join(LOG_ARGS)}"
           f"{' --all' if args.all_refs else ''})\n")
     print(_fmt_exclusion(rep))
     print()
-    print(_fmt_metrics(args.label or "selection", m))
+    print(_fmt_metrics(args.label or "selection", m, insuff))
     n = _notes(m)
     if n:
         print("\n" + n)
     print()
-    return 0
+    # An empty selection is a failed measurement, not a measurement of zero.
+    return 1 if m.commits == 0 else 0
 
 
 def cmd_compare(args) -> int:
@@ -124,22 +151,42 @@ def cmd_compare(args) -> int:
 
     mb = compute(before, history=kept_all)
     ma = compute(after, history=kept_all)
+    ib, ia = _insufficiency(mb, args), _insufficiency(ma, args)
+
+    # Fail closed: a comparison against an empty window is not a comparison.
+    # (Precedent: cmd_detect refuses rather than printing numbers it cannot back.)
+    refused = None
+    if mb.commits == 0 and ma.commits == 0:
+        refused = "both windows have no commits"
+    elif mb.commits == 0:
+        refused = f"the '{args.before_label}' window has no commits"
+    elif ma.commits == 0:
+        refused = f"the '{args.after_label}' window has no commits"
 
     if args.json:
-        print(json.dumps({
+        payload = {
             "split": args.split,
             "before": mb.as_dict(),
             "after": ma.as_dict(),
+            "insufficient": {"before": ib, "after": ia},
             "excluded_pct": round(rep.excluded_pct, 2),
-        }, indent=2))
-        return 0
+        }
+        if refused:
+            payload["comparison_refused"] = refused
+        print(json.dumps(payload, indent=2))
+        return 1 if refused else 0
 
     print(f"\ngit-habits compare  split at {args.split}\n")
     print(_fmt_exclusion(rep))
     print()
-    print(_fmt_metrics(args.before_label, mb))
+    print(_fmt_metrics(args.before_label, mb, ib))
     print()
-    print(_fmt_metrics(args.after_label, ma))
+    print(_fmt_metrics(args.after_label, ma, ia))
+    if refused:
+        print(f"\n  comparison refused: {refused}. Check --author/--since/--until/--split;")
+        print("  an empty window compared against a real one produces fiction, not deltas.")
+        print()
+        return 1
     print("\n  deltas (after vs before)")
     for key, label in [
         ("lines_per_commit", "lines/commit"),
@@ -148,6 +195,12 @@ def cmd_compare(args) -> int:
         ("rework_pct", "rework %"),
         ("commits_per_active_day", "commits/active day"),
     ]:
+        if key in ib or key in ia:
+            side = "both windows" if (key in ib and key in ia) else (
+                "before window" if key in ib else "after window")
+            reason = ib.get(key) or ia.get(key)
+            print(f"    {label:<20} insufficient evidence in {side} ({reason})")
+            continue
         b, a = mb.as_dict()[key], ma.as_dict()[key]
         arrow = "->"
         pct = f"{((a - b) / b * 100):+.0f}%" if b else "n/a"
@@ -218,6 +271,12 @@ def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--no-exclude", action="append",
                    choices=sorted(DEFAULT_PATTERNS), help="disable a default category (repeatable)")
     p.add_argument("--json", action="store_true", help="emit JSON")
+    p.add_argument("--min-evidence-commits", type=int, default=MIN_EVIDENCE_COMMITS,
+                   help="commit floor below which commit-based rates report as "
+                        f"'insufficient' instead of a number (default {MIN_EVIDENCE_COMMITS})")
+    p.add_argument("--min-evidence-lines", type=int, default=MIN_EVIDENCE_LINES,
+                   help="changed-line floor below which per-line rates report as "
+                        f"'insufficient' instead of a number (default {MIN_EVIDENCE_LINES})")
 
 
 def main(argv: list[str] | None = None) -> int:
