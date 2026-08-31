@@ -26,6 +26,23 @@ from .model import Commit
 LEGACY_DAYS = 365
 CHURN_WINDOW_DAYS = 14
 
+# Evidence floors (v0.2). Below these, a rate is refused rather than reported:
+# a percentage over 3 commits or 120 lines is an anecdote wearing a number's
+# clothes. Floors are deliberately low bars for "a number at all", not for
+# "a trustworthy number" — the <30-commit volatility note still applies above
+# them. Overridable per run via --min-evidence-commits / --min-evidence-lines.
+MIN_EVIDENCE_COMMITS = 5
+MIN_EVIDENCE_LINES = 200
+
+_COMMIT_BASED = (
+    "lines_per_commit", "lines_per_commit_p50", "lines_per_commit_p90",
+    "commits_per_active_day", "ai_coauthored_pct",
+)
+_CHURN_BASED = (
+    "moved_pct", "moved_per_kloc", "legacy_pct", "legacy_per_kloc",
+    "rework_pct", "rework_per_kloc",
+)
+
 
 @dataclass
 class Metrics:
@@ -90,6 +107,27 @@ class Metrics:
         if not self.trailers_captured:
             return None
         return _pct(self.ai_coauthored_commits, self.commits)
+
+    def insufficiency(self, min_commits: int = MIN_EVIDENCE_COMMITS,
+                      min_lines: int = MIN_EVIDENCE_LINES) -> dict[str, str]:
+        """Metric keys whose denominator is below the evidence floor, with the reason.
+
+        The principle (learned twice now, once as the trailers bug and once
+        watching an eval gate pass on zero judgments): unknown is not zero, and
+        a report that cannot say "not enough evidence" will eventually lie.
+        Callers substitute the reason string for the value; the raw counts stay
+        visible so the reader can see WHY there is no number.
+        """
+        out: dict[str, str] = {}
+        if self.commits < min_commits:
+            reason = f"n={self.commits} commits, need >={min_commits}"
+            for k in _COMMIT_BASED:
+                out[k] = reason
+        if self.churn < min_lines:
+            reason = f"n={self.churn} changed lines, need >={min_lines}"
+            for k in _CHURN_BASED:
+                out[k] = reason
+        return out
 
     def as_dict(self) -> dict:
         return {

@@ -22,7 +22,7 @@ the claim instead of inheriting it.
 ## Install
 
 ```bash
-git clone https://github.com/uxdw/git-habits && cd git-habits
+git clone https://github.com/rich-atkins/git-habits && cd git-habits
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ```
 
@@ -111,7 +111,7 @@ git-habits scan --repo . --no-exclude data_dumps         # or keep a category
 
 ## Companion tool
 
-[**diff-habits**](https://github.com/uxdw/diff-habits) measures what this one deliberately
+[**diff-habits**](https://github.com/rich-atkins/diff-habits) measures what this one deliberately
 cannot: it reads diff contents and counts **error-masking constructs**, the empty catch
 blocks, silenced exceptions and suppressed type checks that remove the evidence of a
 failure rather than handle it.
