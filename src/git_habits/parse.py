@@ -120,6 +120,10 @@ def _parse_dt(token: str) -> datetime:
     token = token.strip()
     if not token:
         raise ParseError("missing date in COMMIT row")
+    # git's %aI emits a trailing Z for UTC; fromisoformat only accepts it from
+    # Python 3.11, and 3.10 is this package's floor.
+    if token.endswith("Z"):
+        token = token[:-1] + "+00:00"
     return datetime.fromisoformat(token)
 
 
