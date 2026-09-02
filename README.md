@@ -2,6 +2,8 @@
 
 **What did your codebase's habits look like before, and after? Ask git.**
 
+![git-habits and diff-habits v0.2 demo: thin evidence refused with reasons, empty compare windows refused with exit 1, and the sabotage suites proving the detectors detect](docs/demo.gif)
+
 Measure refactoring, reuse and churn from your own git history, and compare any two
 periods. For example, before and after your team adopted AI coding tools.
 
